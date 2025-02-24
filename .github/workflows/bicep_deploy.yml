@@ -2,8 +2,16 @@ name: Validate Deployment - CKM V2
 on:
   push:
     branches:
-      - ckm-v2
-
+      - main
+      - dev
+      - demo
+  pull_request:
+    branches:
+      - main
+      - dev
+      - demo
+  workflow_dispatch: # Runs at 10:00 AM and 10:00 PM GMT
+ 
     
 jobs:
   deploy:
