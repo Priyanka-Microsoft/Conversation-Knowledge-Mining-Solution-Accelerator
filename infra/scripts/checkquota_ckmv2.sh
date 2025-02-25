@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List of Azure regions to check for quota (update as needed)
-REGIONS=("eastus" "eastus2" "northcentralus" "uksouth" "swedencentral")
+REGIONS=("eastus" "eastus2" "northcentralus" "southcentralus")
 
 SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID}"
 GPT_MIN_CAPACITY="${GPT_MIN_CAPACITY}"
