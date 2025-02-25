@@ -33,7 +33,6 @@ echo "✅ Azure subscription set successfully."
 # Define models and their minimum required capacities
 declare -A MIN_CAPACITY=(
     ["OpenAI.Standard.gpt-4o-mini"]=$GPT_MIN_CAPACITY #km generic
-    ["OpenAI.Standard.gpt-4"]=$GPT_MIN_CAPACITY #for ckmv2
     ["OpenAI.Standard.text-embedding-ada-002"]=$TEXT_EMBEDDING_MIN_CAPACITY #km generic
 )
 
