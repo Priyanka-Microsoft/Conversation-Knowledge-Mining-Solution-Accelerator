@@ -18,9 +18,12 @@ if ! az login --use-device-code; then
    exit 1
 fi
 
+# Fetch the default subscription ID dynamically
+SUBSCRIPTION_ID=$(az account show --query "id" -o tsv)
+
 # Set Azure subscription
 echo "🔄 Setting Azure subscription..."
-if ! az account set --subscription "1d5876cd-7603-407a-96d2-ae5ca9a9c5f3"; then
+if ! az account set --subscription "$SUBSCRIPTION_ID"; then
     echo "❌ ERROR: Invalid subscription ID or insufficient permissions."
     exit 1
 fi
