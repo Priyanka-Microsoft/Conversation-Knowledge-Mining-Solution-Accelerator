@@ -33,11 +33,32 @@ The sample data used in this repository is synthetic and generated using Azure O
 ### Solution architecture
 ![image](./docs/Images/ReadMe/ckm-sol-arch.png)
 
-
 <h2><img src="./docs/Images/ReadMe/quickDeploy.png" width="64">
 <br/>
 QUICK DEPLOY
 </h2>
+
+### Check Quota Availability Before Deployment
+
+Before deploying the accelerator, check the quota availability for the model to ensure sufficient capacity:
+
+1. Navigate to the [Azure Portal](https://portal.azure.com).
+2. Click on **Azure Cloud Shell** in the top right navigation menu.
+3. Run the following commands:
+
+    ```sh
+    rm -rf chat-with-your-data-solution-accelerator
+    git clone https://github.com/Priyanka-Microsoft/chat-with-your-data-solution-accelerator
+    cd ./chat-with-your-data-solution-accelerator/scripts
+    sh check_azure_quota_public.sh <model_name> <model_capacity>
+    ```
+
+    - `<model_name>`: The name of the model that is used in the accelerator (e.g., `gpt-4o`).
+    - `<model_capacity>`: The required capacity for the model (e.g., `30`).
+
+If sufficient quota is available, proceed with the deployment.
+
+---
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/microsoft/Conversation-Knowledge-Mining-Solution-Accelerator)
 [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/microsoft/Conversation-Knowledge-Mining-Solution-Accelerator)
