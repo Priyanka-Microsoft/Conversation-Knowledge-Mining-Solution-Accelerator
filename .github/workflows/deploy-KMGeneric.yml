@@ -11,7 +11,6 @@ on:
       - dev
       - demo
   workflow_dispatch:  # Runs at 12:00 AM and 12:00 PM GMT
-
     
 jobs:
   deploy:
@@ -22,6 +21,7 @@ jobs:
 
       - name: Run Quota Check
         id: quota-check
+        if: github.event_name != 'pull_request'
         run: |
           export AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
           export AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
@@ -61,8 +61,13 @@ jobs:
 
       - name: Set Deployment Region
         run: |
-          echo "Selected Region: $VALID_REGION"
-          echo "AZURE_LOCATION=$VALID_REGION" >> $GITHUB_ENV 
+          if [ -z "$VALID_REGION" ]; then
+            echo "No VALID_REGION set, defaulting to 'eastus2'."
+            VALID_REGION="eastus2"
+          else
+            echo "Selected Region: $VALID_REGION"
+          fi
+          echo "AZURE_LOCATION=$VALID_REGION" >> $GITHUB_ENV
 
       - name: Setup Azure CLI
         run: |
@@ -155,7 +160,7 @@ jobs:
 
 
       - name: Delete Bicep Deployment
-        if: always()
+        if: github.event_name != 'pull_request'
         run: |
               set -e  
               echo "Checking if resource group exists..."
