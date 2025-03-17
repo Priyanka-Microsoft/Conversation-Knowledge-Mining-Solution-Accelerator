@@ -1,34 +1,82 @@
 #!/bin/bash
 
 # Parameters
-MODEL_NAME="$1"
-CAPACITY="$2"
-USER_REGION="$3"
+IFS=',' read -r -a MODEL_CAPACITY_PAIRS <<< "$1"  # Split the comma-separated model and capacity pairs into an array
+USER_REGION="$2"
 
-if [ -z "$MODEL_NAME" ] || [ -z "$CAPACITY" ]; then
-    echo "❌ ERROR: Model name and capacity must be provided as arguments."
+if [ ${#MODEL_CAPACITY_PAIRS[@]} -lt 1 ]; then
+    echo "❌ ERROR: At least one model and capacity pairs must be provided as arguments."
     exit 1
 fi
 
-echo "🔄 Using Model: $MODEL_NAME with Minimum Capacity: $CAPACITY"
+# Extract model names and required capacities into arrays
+declare -a MODEL_NAMES
+declare -a CAPACITIES
 
-# Authenticate using Managed Identity
-echo "Authentication using Managed Identity..."
-if ! az login --use-device-code; then
-   echo "❌ Error: Failed to login using Managed Identity."
-   exit 1
-fi
+for PAIR in "${MODEL_CAPACITY_PAIRS[@]}"; do
+    MODEL_NAME=$(echo "$PAIR" | cut -d':' -f1)
+    CAPACITY=$(echo "$PAIR" | cut -d':' -f2)
 
-# Fetch the default subscription ID dynamically
-SUBSCRIPTION_ID=$(az account show --query "id" -o tsv)
+    if [ -z "$MODEL_NAME" ] || [ -z "$CAPACITY" ]; then
+        echo "❌ ERROR: Invalid model and capacity pair '$PAIR'. Both model and capacity must be specified."
+        exit 1
+    fi
+
+    MODEL_NAMES+=("$MODEL_NAME")
+    CAPACITIES+=("$CAPACITY")
+done
+
+echo "🔄 Using Models: ${MODEL_NAMES[*]} with respective Capacities: ${CAPACITIES[*]}"
+
+# # Authenticate using Managed Identity
+# echo "Authentication using Managed Identity..."
+# if ! az login --use-device-code; then
+#    echo "❌ Error: Failed to login using Managed Identity."
+#    exit 1
+# fi
+
+# # Fetch the default subscription ID dynamically
+# SUBSCRIPTION_ID=$(az account show --query "id" -o tsv)
 
 # Set Azure subscription
-echo "🔄 Setting Azure subscription..."
-if ! az account set --subscription "$SUBSCRIPTION_ID"; then
-    echo "❌ ERROR: Invalid subscription ID or insufficient permissions."
-    exit 1
+# echo "🔄 Setting Azure subscription..."
+# if ! az account set --subscription "$SUBSCRIPTION_ID"; then
+#     echo "❌ ERROR: Invalid subscription ID or insufficient permissions."
+#     exit 1
+# fi
+# echo "✅ Azure subscription set successfully."
+
+echo "🔄 Fetching available Azure subscriptions..."
+SUBSCRIPTIONS=$(az account list --query "[?state=='Enabled'].{Name:name, ID:id}" --output tsv)
+SUB_COUNT=$(echo "$SUBSCRIPTIONS" | wc -l)
+
+if [ "$SUB_COUNT" -eq 1 ]; then
+    # If only one subscription, automatically select it
+    AZURE_SUBSCRIPTION_ID=$(echo "$SUBSCRIPTIONS" | awk '{print $2}')
+    echo "✅ Using the only available subscription: $AZURE_SUBSCRIPTION_ID"
+else
+    # If multiple subscriptions exist, prompt the user to choose one
+    echo "Multiple subscriptions found:"
+    echo "$SUBSCRIPTIONS" | awk '{print NR")", $1, "-", $2}'
+
+    while true; do
+        echo "Enter the number of the subscription to use:"
+        read SUB_INDEX
+
+        # Validate user input
+        if [[ "$SUB_INDEX" =~ ^[0-9]+$ ]] && [ "$SUB_INDEX" -ge 1 ] && [ "$SUB_INDEX" -le "$SUB_COUNT" ]; then
+            AZURE_SUBSCRIPTION_ID=$(echo "$SUBSCRIPTIONS" | awk -v idx="$SUB_INDEX" 'NR==idx {print $2}')
+            echo "✅ Selected Subscription: $AZURE_SUBSCRIPTION_ID"
+            break
+        else
+            echo "❌ Invalid selection. Please enter a valid number from the list."
+        fi
+    done
 fi
-echo "✅ Azure subscription set successfully."
+
+# Set the selected subscription
+az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+echo "🎯 Active Subscription: $(az account show --query '[name, id]' --output table)"
 
 # List of regions to check
 DEFAULT_REGIONS=("eastus" "uksouth" "eastus2" "northcentralus" "swedencentral" "westus" "westus2" "southcentralus" "canadacentral")
@@ -48,56 +96,65 @@ for REGION in "${REGIONS[@]}"; do
     echo "----------------------------------------"
     echo "🔍 Checking region: $REGION"
 
-    # Check if model is supported in the region
-    # SUPPORTED_MODELS=$(az cognitiveservices account list-skus --location "$REGION" --query "value[].sku.name" -o tsv)
-    # if ! echo "$SUPPORTED_MODELS" | grep -qw "OpenAI.Standard.$MODEL_NAME"; then
-    #     echo "⚠️ WARNING: Model 'OpenAI.Standard.$MODEL_NAME' is NOT available in $REGION. Skipping."
-    #     continue
-    # fi
-
-    # Fetch quota information
+    # Fetch quota information for the region
     QUOTA_INFO=$(az cognitiveservices usage list --location "$REGION" --output json)
     if [ -z "$QUOTA_INFO" ]; then
         echo "⚠️ WARNING: Failed to retrieve quota for region $REGION. Skipping."
         continue
     fi
 
-    # Extract model quota using awk
-    MODEL_INFO=$(echo "$QUOTA_INFO" | awk -v model="\"value\": \"OpenAI.Standard.$MODEL_NAME\"" '
-        BEGIN { RS="},"; FS="," }
-        $0 ~ model { print $0 }
-    ')
+    # Initialize a flag to track if both models have sufficient quota in the region
+    BOTH_MODELS_AVAILABLE=true
 
-    if [ -z "$MODEL_INFO" ]; then
-        echo "⚠️ WARNING: No quota information found for model: OpenAI.Standard.$MODEL_NAME in $REGION. Skipping."
-        continue
-    fi
+    for index in "${!MODEL_NAMES[@]}"; do
+        MODEL_NAME="${MODEL_NAMES[$index]}"
+        REQUIRED_CAPACITY="${CAPACITIES[$index]}"
+        
+        echo "🔍 Checking model: $MODEL_NAME with required capacity: $REQUIRED_CAPACITY"
 
-    CURRENT_VALUE=$(echo "$MODEL_INFO" | awk -F': ' '/"currentValue"/ {print $2}' | tr -d ',' | tr -d ' ')
-    LIMIT=$(echo "$MODEL_INFO" | awk -F': ' '/"limit"/ {print $2}' | tr -d ',' | tr -d ' ')
+        # Extract model quota information
+        MODEL_INFO=$(echo "$QUOTA_INFO" | awk -v model="\"value\": \"OpenAI.Standard.$MODEL_NAME\"" '
+            BEGIN { RS="},"; FS="," }
+            $0 ~ model { print $0 }
+        ')
 
-    CURRENT_VALUE=${CURRENT_VALUE:-0}
-    LIMIT=${LIMIT:-0}
+        if [ -z "$MODEL_INFO" ]; then
+            echo "⚠️ WARNING: No quota information found for model: OpenAI.Standard.$MODEL_NAME in $REGION. Skipping."
+            BOTH_MODELS_AVAILABLE=false
+            break  # If any model is not available, no need to check further for this region
+        fi
 
-    CURRENT_VALUE=$(echo "$CURRENT_VALUE" | cut -d'.' -f1)
-    LIMIT=$(echo "$LIMIT" | cut -d'.' -f1)
+        CURRENT_VALUE=$(echo "$MODEL_INFO" | awk -F': ' '/"currentValue"/ {print $2}' | tr -d ',' | tr -d ' ')
+        LIMIT=$(echo "$MODEL_INFO" | awk -F': ' '/"limit"/ {print $2}' | tr -d ',' | tr -d ' ')
 
-    AVAILABLE=$((LIMIT - CURRENT_VALUE))
+        CURRENT_VALUE=${CURRENT_VALUE:-0}
+        LIMIT=${LIMIT:-0}
 
-    echo "✅ Model: OpenAI.Standard.$MODEL_NAME | Used: $CURRENT_VALUE | Limit: $LIMIT | Available: $AVAILABLE"
+        CURRENT_VALUE=$(echo "$CURRENT_VALUE" | cut -d'.' -f1)
+        LIMIT=$(echo "$LIMIT" | cut -d'.' -f1)
 
-    # Check if quota is sufficient
-    if [ "$AVAILABLE" -ge "$CAPACITY" ]; then
-        echo "✅ Model 'OpenAI.Standard.$MODEL_NAME' has enough quota in $REGION."
+        AVAILABLE=$((LIMIT - CURRENT_VALUE))
+
+        echo "✅ Model: OpenAI.Standard.$MODEL_NAME | Used: $CURRENT_VALUE | Limit: $LIMIT | Available: $AVAILABLE"
+
+        # Check if quota is sufficient
+        if [ "$AVAILABLE" -lt "$REQUIRED_CAPACITY" ]; then
+            echo "❌ ERROR: 'OpenAI.Standard.$MODEL_NAME' in $REGION has insufficient quota. Required: $REQUIRED_CAPACITY, Available: $AVAILABLE"
+            BOTH_MODELS_AVAILABLE=false
+            break
+        fi
+    done
+
+    # If both models have sufficient quota, add region to valid regions
+    if [ "$BOTH_MODELS_AVAILABLE" = true ]; then
+        echo "✅ All models have sufficient quota in $REGION."
         VALID_REGIONS+=("$REGION")
-    else
-        echo "❌ ERROR: 'OpenAI.Standard.$MODEL_NAME' in $REGION has insufficient quota. Required: $CAPACITY, Available: $AVAILABLE"
     fi
 done
 
 # Determine final result
 if [ ${#VALID_REGIONS[@]} -eq 0 ]; then
-    echo "❌ No region with sufficient quota found. Blocking deployment."
+    echo "❌ No region with sufficient quota found for all models. Blocking deployment."
     exit 0
 else
     echo "✅ Suggested Regions: ${VALID_REGIONS[*]}"
