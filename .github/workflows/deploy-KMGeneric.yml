@@ -1,6 +1,6 @@
 name: Validate Deployment - KM Generic
 on:
-  push:
+  pull_request:
     branches:
 
       - main
@@ -15,7 +15,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event_name != 'push'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
