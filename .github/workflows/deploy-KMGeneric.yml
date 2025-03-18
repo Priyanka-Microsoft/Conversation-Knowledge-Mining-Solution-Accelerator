@@ -15,10 +15,14 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.event_name != 'push'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
-
+      
+      - name: Debug Event Name
+        run: echo "Event Name - ${{ github.event_name }}"
+  
       - name: Run Quota Check
         id: quota-check
         run: |
@@ -26,7 +30,7 @@ jobs:
           export AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
           export AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}
           export AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          export GPT_MIN_CAPACITY="100"
+          export GPT_MIN_CAPACITY="90"
           export TEXT_EMBEDDING_MIN_CAPACITY="80"
           export AZURE_REGIONS="${{ vars.AZURE_REGIONS_KM }}"
 
