@@ -2,15 +2,14 @@ name: Validate Deployment - KM Generic
 on:
   push:
     branches:
+
       - main
       - dev
       - demo
-  pull_request:
-    branches:
-      - main
-      - dev
-      - demo
-  workflow_dispatch:  # Runs at 12:00 AM and 12:00 PM GMT
+  workflow_dispatch:
+
+  schedule:
+    - cron: '0 0,12 * * *'  # Runs at 12:00 AM and 12:00 PM GMT
 
     
 jobs:
@@ -27,7 +26,7 @@ jobs:
           export AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
           export AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}
           export AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          export GPT_MIN_CAPACITY="150"
+          export GPT_MIN_CAPACITY="100"
           export TEXT_EMBEDDING_MIN_CAPACITY="80"
           export AZURE_REGIONS="${{ vars.AZURE_REGIONS_KM }}"
 
@@ -113,7 +112,7 @@ jobs:
           az deployment group create \
             --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
             --template-file infra/main.bicep \
-            --parameters environmentName=${{env.SOLUTION_PREFIX}} contentUnderstandingLocation="West US" secondaryLocation="${{ env.AZURE_LOCATION }}" imageTag=${{ steps.determine_tag.outputs.tagname }}
+            --parameters environmentName=${{env.SOLUTION_PREFIX}} contentUnderstandingLocation="swedencentral" secondaryLocation="${{ env.AZURE_LOCATION }}" imageTag=${{ steps.determine_tag.outputs.tagname }}
      
             
       - name: Extract AI Services and Key Vault Names
