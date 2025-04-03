@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# List of Azure regions to check for quota (update as needed)
 IFS=', ' read -ra REGIONS <<< "$AZURE_REGIONS"
 
 SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID}"
@@ -30,11 +29,10 @@ if ! az account set --subscription "$SUBSCRIPTION_ID"; then
 fi
 echo "✅ Azure subscription set successfully."
 
-# Define models and their minimum required capacities
 declare -A MIN_CAPACITY=(
-    ["OpenAI.Standard.gpt-4o-mini"]=$GPT_MIN_CAPACITY #km generic
+    ["OpenAI.Standard.gpt-4o-mini"]=$GPT_MIN_CAPACITY
     ["OpenAI.GlobalStandard.gpt-4o-mini"]=$GPT_MIN_CAPACITY
-    ["OpenAI.Standard.text-embedding-ada-002"]=$TEXT_EMBEDDING_MIN_CAPACITY #km generic
+    ["OpenAI.Standard.text-embedding-ada-002"]=$TEXT_EMBEDDING_MIN_CAPACITY
 )
 
 VALID_REGION=""
@@ -48,7 +46,10 @@ for REGION in "${REGIONS[@]}"; do
         continue
     fi
 
-    INSUFFICIENT_QUOTA=false
+    STANDARD_AVAILABLE=false
+    GLOBAL_STANDARD_AVAILABLE=false
+    TEXT_EMBEDDING_AVAILABLE=false
+
     for MODEL in "${!MIN_CAPACITY[@]}"; do
         MODEL_INFO=$(echo "$QUOTA_INFO" | awk -v model="\"value\": \"$MODEL\"" '
             BEGIN { RS="},"; FS="," }
@@ -65,22 +66,20 @@ for REGION in "${REGIONS[@]}"; do
 
         CURRENT_VALUE=${CURRENT_VALUE:-0}
         LIMIT=${LIMIT:-0}
-
-        CURRENT_VALUE=$(echo "$CURRENT_VALUE" | cut -d'.' -f1)
-        LIMIT=$(echo "$LIMIT" | cut -d'.' -f1)
-
         AVAILABLE=$((LIMIT - CURRENT_VALUE))
 
         echo "✅ Model: $MODEL | Used: $CURRENT_VALUE | Limit: $LIMIT | Available: $AVAILABLE"
 
-        if [ "$AVAILABLE" -lt "${MIN_CAPACITY[$MODEL]}" ]; then
-            echo "❌ ERROR: $MODEL in $REGION has insufficient quota."
-            INSUFFICIENT_QUOTA=true
-            break
+        if [ "$AVAILABLE" -ge "${MIN_CAPACITY[$MODEL]}" ]; then
+            case $MODEL in
+                "OpenAI.Standard.gpt-4o-mini") STANDARD_AVAILABLE=true ;;
+                "OpenAI.GlobalStandard.gpt-4o-mini") GLOBAL_STANDARD_AVAILABLE=true ;;
+                "OpenAI.Standard.text-embedding-ada-002") TEXT_EMBEDDING_AVAILABLE=true ;;
+            esac
         fi
     done
 
-    if [ "$INSUFFICIENT_QUOTA" = false ]; then
+    if { [ "$STANDARD_AVAILABLE" = true ] || [ "$GLOBAL_STANDARD_AVAILABLE" = true ]; } && [ "$TEXT_EMBEDDING_AVAILABLE" = true ]; then
         VALID_REGION="$REGION"
         break
     fi
