@@ -32,9 +32,8 @@ echo "✅ Azure subscription set successfully."
 
 # Define models and their minimum required capacities
 declare -A MIN_CAPACITY=(
-    ["OpenAI.Standard.gpt-4o-mini"]=$GPT_MIN_CAPACITY
-    ["OpenAI.GlobalStandard.gpt-4o-mini"]=$GPT_MIN_CAPACITY
-    ["OpenAI.Standard.text-embedding-ada-002"]=$TEXT_EMBEDDING_MIN_CAPACITY
+    ["OpenAI.GlobalStandard.gpt-4o-mini"]=$GPT_MIN_CAPACITY #km generic
+    ["OpenAI.GlobalStandard.text-embedding-ada-002"]=$TEXT_EMBEDDING_MIN_CAPACITY #km generic
 )
 
 VALID_REGION=""
@@ -48,9 +47,7 @@ for REGION in "${REGIONS[@]}"; do
         continue
     fi
 
-    GPT_MODEL_OK=false
-    EMBEDDING_MODEL_OK=false
-
+    INSUFFICIENT_QUOTA=false
     for MODEL in "${!MIN_CAPACITY[@]}"; do
         MODEL_INFO=$(echo "$QUOTA_INFO" | awk -v model="\"value\": \"$MODEL\"" '
             BEGIN { RS="},"; FS="," }
@@ -75,22 +72,18 @@ for REGION in "${REGIONS[@]}"; do
 
         echo "✅ Model: $MODEL | Used: $CURRENT_VALUE | Limit: $LIMIT | Available: $AVAILABLE"
 
-        if [ "$AVAILABLE" -ge "${MIN_CAPACITY[$MODEL]}" ]; then
-            if [[ "$MODEL" == "OpenAI.Standard.gpt-4o-mini" || "$MODEL" == "OpenAI.GlobalStandard.gpt-4o-mini" ]]; then
-                GPT_MODEL_OK=true
-            elif [[ "$MODEL" == "OpenAI.Standard.text-embedding-ada-002" ]]; then
-                EMBEDDING_MODEL_OK=true
-            fi
+        if [ "$AVAILABLE" -lt "${MIN_CAPACITY[$MODEL]}" ]; then
+            echo "❌ ERROR: $MODEL in $REGION has insufficient quota."
+            INSUFFICIENT_QUOTA=true
+            break
         fi
     done
 
-    if [[ "$GPT_MODEL_OK" == true && "$EMBEDDING_MODEL_OK" == true ]]; then
-        echo "✅ Sufficient quota found in region: $REGION"
+    if [ "$INSUFFICIENT_QUOTA" = false ]; then
         VALID_REGION="$REGION"
         break
-    else
-        echo "❌ ERROR: Insufficient quota combination in $REGION."
     fi
+
 done
 
 if [ -z "$VALID_REGION" ]; then
